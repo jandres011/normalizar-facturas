@@ -23,7 +23,7 @@ bp = Blueprint()
 
 @bp.blob_trigger(
     arg_name="blob",
-    path="incoming-invoices/{name}",
+    path="entrada/{name}",
     connection="AzureWebJobsStorage",
 )
 async def normalize_invoice_name(blob: func.InputStream) -> None:
