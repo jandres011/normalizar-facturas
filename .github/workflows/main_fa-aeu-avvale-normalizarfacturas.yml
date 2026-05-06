@@ -70,16 +70,16 @@ jobs:
       - name: Login to Azure
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_4D3409584A1F4CF1B0A584621ADCE677 }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_A7E01BF249724825987E7626D50011FF }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_3494D31608884FD096E0204152052DFB }}
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_8A478386592042FAB800E00480D12C38 }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_12A8DBAC15374127864C686E7430A2A9 }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_5A26500678AE468EB1FF9AAD7DAADBAB }}
 
       # FIX 3: Deploy directo del zip sin descomprimir — functions-action lo maneja solo
       - name: Deploy to Azure Functions
         uses: Azure/functions-action@v1
         id: deploy-to-function
         with:
-          app-name: 'fa-aeu-avvale-normalizarfacturas'
+          app-name: 'normalizarfacturas'
           slot-name: 'Production'
           package: 'release.zip'
           # FIX 4: SCM_DO_BUILD_DURING_DEPLOYMENT desactivado porque ya incluimos .python_packages

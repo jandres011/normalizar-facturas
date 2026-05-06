@@ -3,9 +3,8 @@
   "logging": {
     "logLevel": {
       "default": "Information",
-      "Function": "Information",
-      "Host.Results": "Information",
-      "Host.Aggregator": "Information"
+      "Function": "Trace",
+      "Host": "Debug"
     },
     "applicationInsights": {
       "samplingSettings": {
