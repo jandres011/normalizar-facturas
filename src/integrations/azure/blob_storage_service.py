@@ -127,9 +127,9 @@ class BlobStorageService:
         self,
         dest_blob,
         blob_name: str,
-        max_attempts: int = 20,
+        max_attempts: int = 60,
+        delay: float = 1.0,
     ) -> None:
-        """Espera hasta que la copia termine y valida estado success."""
         for attempt in range(max_attempts):
             properties = await dest_blob.get_blob_properties()
             status = properties.copy.status
@@ -142,11 +142,10 @@ class BlobStorageService:
                     f"La copia del blob '{blob_name}' falló con estado: {status}"
                 )
 
-            if attempt < max_attempts - 1:
-                await asyncio.sleep(0.2)
+            await asyncio.sleep(delay)
 
         raise StorageError(
-            f"La copia del blob '{blob_name}' no finalizó en el tiempo esperado"
+            f"La copia del blob '{blob_name}' no finalizó tras {max_attempts * delay}s"
         )
 
     async def copy_blob_with_normalized_name(
