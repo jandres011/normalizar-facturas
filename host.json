@@ -1,0 +1,58 @@
+{
+  "version": "2.0",
+  "logging": {
+    "logLevel": {
+      "default": "Information",
+      "Function": "Information",
+      "Host.Results": "Information",
+      "Host.Aggregator": "Information"
+    },
+    "applicationInsights": {
+      "samplingSettings": {
+        "isEnabled": true,
+        "maxTelemetryItemsPerSecond": 20,
+        "evaluationInterval": "01:00:00",
+        "initialSamplingPercentage": 100.0,
+        "samplingPercentageIncreaseTimeout": "00:00:01",
+        "samplingPercentageDecreaseTimeout": "00:00:01",
+        "minSamplingPercentage": 0.1,
+        "maxSamplingPercentage": 100.0,
+        "movingAverageRatio": 1.0,
+        "excludedTypes": "Dependency;Event",
+        "includedTypes": "PageView;Trace"
+      },
+      "enableLiveMetrics": true,
+      "enableDependencyTracking": true,
+      "enablePerformanceCountersCollection": true,
+      "httpAutoCollectionOptions": {
+        "enableHttpTriggerExtendedInfoCollection": true,
+        "enableW3CDistributedTracing": true,
+        "enableResponseHeaderInjection": true
+      }
+    }
+  },
+  "extensionBundle": {
+    "id": "Microsoft.Azure.Functions.ExtensionBundle",
+    "version": "[4.*, 5.0.0)"
+  },
+  "functionTimeout": "00:10:00",
+  "healthMonitor": {
+    "enabled": true,
+    "healthCheckInterval": "00:00:10",
+    "healthCheckWindow": "00:02:00",
+    "healthCheckThreshold": 6,
+    "counterThreshold": 0.80
+  },
+  "http": {
+    "routePrefix": "api",
+    "maxOutstandingRequests": 200,
+    "maxConcurrentRequests": 100,
+    "dynamicThrottlesEnabled": true
+  },
+  "retry": {
+    "strategy": "exponentialBackoff",
+    "maxRetryCount": 3,
+    "minimumInterval": "00:00:02",
+    "maximumInterval": "00:00:30"
+  }
+}

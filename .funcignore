@@ -1,0 +1,27 @@
+.git*
+.vscode
+.idea
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+*.pyc
+__pycache__/
+*.egg-info/
+.env
+.env.local
+local.settings.json
+tests/
+docs/
+scripts/
+*.md
+README*
+LICENSE
+.gitignore
+.funcignore
+venv/
+.venv/
+env/
+-e 
+# Dependencias locales - Azure las instala desde requirements.txt
+.python_packages/
