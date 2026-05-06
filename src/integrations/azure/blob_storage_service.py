@@ -4,9 +4,11 @@ Maneja operaciones de mover/copiar blobs entre containers.
 """
 
 import asyncio
+from datetime import datetime, timezone, timedelta
 from typing import Optional, Tuple
 
 from azure.storage.blob.aio import BlobServiceClient
+from azure.storage.blob import generate_blob_sas, BlobSasPermissions
 from azure.core.exceptions import ResourceNotFoundError, AzureError
 import structlog
 
@@ -44,6 +46,45 @@ class BlobStorageService:
         if dot_index <= 0:
             return name, ""
         return name[:dot_index], name[dot_index:]
+
+    def _generate_sas_url(
+        self,
+        blob_service: BlobServiceClient,
+        container_name: str,
+        blob_name: str,
+        expiry_minutes: int = 10,
+    ) -> str:
+        """
+        Genera una SAS URL con permisos de lectura para un blob privado.
+
+        Necesario para server-side copy entre containers privados,
+        ya que start_copy_from_url requiere una URL autenticada.
+
+        Args:
+            blob_service: Cliente del Blob Service (para obtener account_name y key)
+            container_name: Nombre del container origen
+            blob_name: Nombre del blob
+            expiry_minutes: Minutos de validez del SAS token (default: 10)
+
+        Returns:
+            URL completa con SAS token
+        """
+        account_name = blob_service.account_name
+        account_key = blob_service.credential.account_key
+
+        sas_token = generate_blob_sas(
+            account_name=account_name,
+            container_name=container_name,
+            blob_name=blob_name,
+            account_key=account_key,
+            permission=BlobSasPermissions(read=True),
+            expiry=datetime.now(timezone.utc) + timedelta(minutes=expiry_minutes),
+        )
+
+        return (
+            f"https://{account_name}.blob.core.windows.net"
+            f"/{container_name}/{blob_name}?{sas_token}"
+        )
 
     async def _resolve_available_destination_name(
         self,
@@ -119,6 +160,8 @@ class BlobStorageService:
         Copiar blob por nombre al contenedor destino y eliminar origen tras éxito.
 
         Implementa el patrón estricto: copy -> validar copy -> delete origen.
+        Genera un SAS token para el blob origen porque los containers son privados
+        y start_copy_from_url requiere una URL autenticada.
         No descarga ni inspecciona el contenido del archivo.
         """
         source_container = source_container or self.incoming_container
@@ -136,6 +179,13 @@ class BlobStorageService:
                     blob=original_name,
                 )
 
+                # Generar SAS URL para el blob origen (requerido para containers privados)
+                source_url_with_sas = self._generate_sas_url(
+                    blob_service=blob_service,
+                    container_name=source_container,
+                    blob_name=original_name,
+                )
+
                 destination_name = await self._resolve_available_destination_name(
                     blob_service=blob_service,
                     destination_container=destination_container,
@@ -147,7 +197,7 @@ class BlobStorageService:
                     blob=destination_name,
                 )
 
-                copy_operation = await dest_blob.start_copy_from_url(source_blob.url)
+                copy_operation = await dest_blob.start_copy_from_url(source_url_with_sas)
                 logger.info(
                     "Copia de blob iniciada",
                     original_name=original_name,
@@ -212,14 +262,14 @@ class BlobStorageService:
     ) -> str:
         """
         Mover blob del container temporal al archivo permanente.
-        
+
         Args:
             blob_name: Nombre del blob a mover
-            source_container: Container origen (por defecto incoming-pdfs)
-            
+            source_container: Container origen (por defecto incoming)
+
         Returns:
             URL del blob en el container de archivo
-            
+
         Raises:
             StorageError: Si falla la operación
         """
@@ -239,15 +289,17 @@ class BlobStorageService:
     ) -> str:
         """
         Mover blob al container de errores.
-        
+
+        Genera SAS token para la URL origen porque los containers son privados.
+
         Args:
             blob_name: Nombre del blob a mover
-            source_container: Container origen (por defecto incoming-pdfs)
+            source_container: Container origen (por defecto incoming)
             error_message: Mensaje de error para registrar en metadata
-            
+
         Returns:
             URL del blob en el container de errores
-            
+
         Raises:
             StorageError: Si falla la operación
         """
@@ -263,28 +315,30 @@ class BlobStorageService:
             )
 
             async with self._get_blob_service_client() as blob_service:
-                # Obtener referencia al blob origen
                 source_blob = blob_service.get_blob_client(
                     container=source_container,
                     blob=blob_name,
                 )
 
-                # Obtener referencia al blob destino
+                # Generar SAS URL para el blob origen (requerido para containers privados)
+                source_url_with_sas = self._generate_sas_url(
+                    blob_service=blob_service,
+                    container_name=source_container,
+                    blob_name=blob_name,
+                )
+
                 dest_blob = blob_service.get_blob_client(
                     container=self.failed_container,
                     blob=blob_name,
                 )
 
-                # Copiar blob
-                await dest_blob.start_copy_from_url(source_blob.url)
+                await dest_blob.start_copy_from_url(source_url_with_sas)
                 await self._wait_for_copy_success(dest_blob, blob_name)
 
-                # Agregar metadata con error
                 if error_message:
-                    metadata = {"error_message": error_message[:1000]}  # Limitar tamaño
+                    metadata = {"error_message": error_message[:1000]}
                     await dest_blob.set_blob_metadata(metadata)
 
-                # Eliminar blob original
                 await source_blob.delete_blob()
 
                 logger.info(
@@ -301,7 +355,6 @@ class BlobStorageService:
                 blob_name=blob_name,
                 error=str(e),
             )
-            # No lanzamos excepción aquí porque es un fallback
             raise StorageError(
                 f"Error al mover blob a errores: {str(e)}"
             ) from e
@@ -313,14 +366,14 @@ class BlobStorageService:
     ) -> bytes:
         """
         Leer contenido de un blob.
-        
+
         Args:
             blob_name: Nombre del blob a leer
-            container_name: Nombre del container (por defecto incoming-pdfs)
-            
+            container_name: Nombre del container (por defecto incoming)
+
         Returns:
             Contenido del blob en bytes
-            
+
         Raises:
             StorageError: Si falla la lectura
         """
@@ -340,7 +393,6 @@ class BlobStorageService:
                     blob=blob_name,
                 )
 
-                # Descargar blob
                 blob_data = await blob_client.download_blob()
                 content = await blob_data.readall()
 

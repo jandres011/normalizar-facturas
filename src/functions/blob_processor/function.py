@@ -1,13 +1,21 @@
 """
 Azure Function con Blob Trigger para estandarización de nombres de facturas.
 
-Esta función se activa cuando un archivo es agregado al container 'incoming-invoices'.
+Esta función se activa cuando un archivo es agregado al container 'entrada'.
 Normaliza el nombre (minúsculas, sin espacios, sin caracteres especiales) y copia
-el archivo al container 'normalized-invoices' con el nombre estandarizado.
+el archivo al container 'salida' con el nombre estandarizado.
 
-El archivo original en 'incoming-invoices' se elimina tras la copia exitosa.
-Si la operación falla, el archivo se mueve a 'invoices-failed' con metadata del error.
+El archivo original en 'entrada' se elimina tras la copia exitosa.
+Si la operación falla, el archivo se mueve a 'error' con metadata del error.
+
+NOTA: La función usa un wrapper síncrono (normalize_invoice_name) que llama
+a la lógica async (_normalize_invoice_name_async) mediante asyncio.run().
+Esto es necesario porque el Blob Trigger de Azure Functions v2 en Python
+tiene soporte limitado para funciones async directas, lo que puede causar
+que el trigger se active pero la corutina nunca se ejecute correctamente.
 """
+
+import asyncio
 
 import azure.functions as func
 from azure.functions import Blueprint
@@ -26,16 +34,30 @@ bp = Blueprint()
     path="entrada/{name}",
     connection="AzureWebJobsStorage",
 )
-async def normalize_invoice_name(blob: func.InputStream) -> None:
+def normalize_invoice_name(blob: func.InputStream) -> None:
     """
-    Normalizar nombre de factura cuando es agregada al container incoming-invoices.
+    Entry point síncrono del Blob Trigger.
+
+    Wrapper necesario para garantizar compatibilidad con Azure Functions v2.
+    Delega toda la lógica a la corutina _normalize_invoice_name_async.
+
+    Args:
+        blob: Stream del blob que activó la función
+    """
+    asyncio.run(_normalize_invoice_name_async(blob))
+
+
+async def _normalize_invoice_name_async(blob: func.InputStream) -> None:
+    """
+    Lógica principal async para normalizar nombre de factura.
 
     Flujo:
     1. Obtener solo el nombre del blob
     2. Validar extensión permitida (.pdf/.xml)
     3. Calcular nombre normalizado
-    4. Copiar al container destino y validar copia
+    4. Copiar al container destino con nombre normalizado
     5. Eliminar blob original tras copia exitosa
+    6. Si falla, mover blob a container de errores
 
     Args:
         blob: Stream del blob que activó la función
@@ -49,6 +71,7 @@ async def normalize_invoice_name(blob: func.InputStream) -> None:
         blob_uri=blob.uri,
     )
 
+    # Validar extensión permitida
     extension = ""
     if "." in original_name:
         extension = "." + original_name.split(".")[-1].lower()
@@ -62,7 +85,7 @@ async def normalize_invoice_name(blob: func.InputStream) -> None:
         )
         return
 
-    # Calcular nombre normalizado en base al string del nombre
+    # Calcular nombre normalizado
     try:
         normalized_name = normalize_blob_name(original_name)
     except ValueError as e:
@@ -71,7 +94,7 @@ async def normalize_invoice_name(blob: func.InputStream) -> None:
             original_name=original_name,
             error=str(e),
         )
-        return  # No hay contenido que mover; el blob queda en incoming para revisión manual
+        return  # El blob queda en 'entrada' para revisión manual
 
     logger.info(
         "Nombre normalizado calculado",
@@ -83,7 +106,7 @@ async def normalize_invoice_name(blob: func.InputStream) -> None:
     storage_service = BlobStorageService()
 
     try:
-        # Mover sin leer/parsear contenido: copy -> validar -> delete
+        # Copiar con nombre normalizado a 'salida' y eliminar de 'entrada'
         destination_url = await storage_service.copy_blob_with_normalized_name(
             original_name=original_name,
             normalized_name=normalized_name,
