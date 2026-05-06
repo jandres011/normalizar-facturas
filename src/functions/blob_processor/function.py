@@ -20,6 +20,7 @@ from src.core.exceptions import StorageError
 logger = structlog.get_logger()
 bp = Blueprint()
 
+logger.info("🔌 Módulo blob_processor cargado")
 
 @bp.blob_trigger(
     arg_name="blob",
