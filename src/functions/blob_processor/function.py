@@ -1,12 +1,12 @@
 """
 Azure Function con Blob Trigger para estandarización de nombres de facturas.
 
-Esta función se activa cuando un archivo es agregado al container 'incoming-invoices'.
+Esta función se activa cuando un archivo es agregado al container definido.
 Normaliza el nombre (minúsculas, sin espacios, sin caracteres especiales) y copia
 el archivo al container 'normalized-invoices' con el nombre estandarizado.
 
-El archivo original en 'incoming-invoices' se elimina tras la copia exitosa.
-Si la operación falla, el archivo se mueve a 'invoices-failed' con metadata del error.
+El archivo original en definido se elimina tras la copia exitosa.
+Si la operación falla, el archivo se mueve al container de errores con el metadata del error.
 """
 
 import azure.functions as func
@@ -23,7 +23,7 @@ bp = Blueprint()
 logger.info("Módulo blob_processor cargado")
 
 @bp.blob_trigger(
-    arg_name="blob",
+    arg_name="event",
     path="entrada/{name}",
     connection="AzureWebJobsStorage",
     source="EventGrid"
