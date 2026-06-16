@@ -28,7 +28,7 @@ logger.info("Módulo blob_processor cargado")
     connection="AzureWebJobsStorage",
     source="EventGrid"
 )
-async def normalize_invoice_name(blob: func.InputStream) -> None:
+async def normalize_invoice_name(event: func.InputStream) -> None:
     """
     Normalizar nombre de factura cuando es agregada al container incoming-invoices.
 
@@ -40,15 +40,15 @@ async def normalize_invoice_name(blob: func.InputStream) -> None:
     5. Eliminar blob original tras copia exitosa
 
     Args:
-        blob: Stream del blob que activó la función
+        event: Evento del blob que activó la función
     """
-    original_name = blob.name.split("/")[-1]
+    original_name = event.name.split("/")[-1]
 
     logger.info(
         "Blob trigger activado",
         original_name=original_name,
-        blob_size=blob.length,
-        blob_uri=blob.uri,
+        blob_size=event.length,
+        blob_uri=event.uri,
     )
 
     extension = ""
