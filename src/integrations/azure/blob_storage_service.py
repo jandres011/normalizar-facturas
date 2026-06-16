@@ -164,7 +164,7 @@ class BlobStorageService:
         No descarga ni inspecciona el contenido del archivo.
         """
         source_container = source_container or self.incoming_container
-        destination_container = destination_container or self.archived_container
+        destination_container = destination_container or source_container
 
         if not original_name or not original_name.strip():
             raise StorageError("El nombre original del blob es inválido o vacío")

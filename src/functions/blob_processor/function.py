@@ -20,12 +20,13 @@ from src.core.exceptions import StorageError
 logger = structlog.get_logger()
 bp = Blueprint()
 
-logger.info("🔌 Módulo blob_processor cargado")
+logger.info("Módulo blob_processor cargado")
 
 @bp.blob_trigger(
     arg_name="blob",
     path="entrada/{name}",
     connection="AzureWebJobsStorage",
+    source="EventGrid"
 )
 async def normalize_invoice_name(blob: func.InputStream) -> None:
     """
@@ -89,7 +90,7 @@ async def normalize_invoice_name(blob: func.InputStream) -> None:
             original_name=original_name,
             normalized_name=normalized_name,
             source_container=storage_service.incoming_container,
-            destination_container=storage_service.archived_container,
+            destination_container=storage_service.incoming_container,  # Copia dentro del mismo container para renombrar sin mover entre containers
         )
 
         logger.info(
@@ -97,7 +98,7 @@ async def normalize_invoice_name(blob: func.InputStream) -> None:
             original_name=original_name,
             normalized_name=normalized_name,
             source_container=storage_service.incoming_container,
-            destination_container=storage_service.archived_container,
+            destination_container=storage_service.incoming_container,  # Copia dentro del mismo container para renombrar sin mover entre containers
             destination_url=destination_url,
         )
 
