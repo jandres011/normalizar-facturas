@@ -22,7 +22,7 @@ bp = Blueprint()
 
 logger.info("Módulo blob_processor cargado")
 
-@bp.blob_trigger(
+@bp.event_grid_trigger(
     arg_name="event",
     path="entrada/{name}",
     connection="AzureWebJobsStorage",
