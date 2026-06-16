@@ -74,6 +74,13 @@ async def normalize_invoice_name(blob: func.InputStream) -> None:
             error=str(e),
         )
         return  # No hay contenido que mover; el blob queda en incoming para revisión manual
+    
+    if original_name == normalized_name:
+        logger.info(
+            "Nombre ya normalizado, ignorando para evitar re-procesamiento",
+            original_name=original_name,
+        )
+        return
 
     logger.info(
         "Nombre normalizado calculado",
