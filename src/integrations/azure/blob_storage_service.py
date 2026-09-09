@@ -7,6 +7,8 @@ import asyncio
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Tuple
 
+from urllib.parse import quote
+
 from azure.storage.blob.aio import BlobServiceClient
 from azure.storage.blob import generate_blob_sas, BlobSasPermissions
 from azure.core.exceptions import ResourceNotFoundError, AzureError
@@ -81,9 +83,12 @@ class BlobStorageService:
             expiry=datetime.now(timezone.utc) + timedelta(minutes=expiry_minutes),
         )
 
+        encoded_container = quote(container_name, safe="")
+        encoded_blob_name = quote(blob_name, safe="/")
+
         return (
             f"https://{account_name}.blob.core.windows.net"
-            f"/{container_name}/{blob_name}?{sas_token}"
+            f"/{encoded_container}/{encoded_blob_name}?{sas_token}"
         )
 
     async def _resolve_available_destination_name(
@@ -130,7 +135,7 @@ class BlobStorageService:
         max_attempts: int = 60,
         delay: float = 1.0,
     ) -> None:
-        for attempt in range(max_attempts):
+        for _ in range(max_attempts):
             properties = await dest_blob.get_blob_properties()
             status = properties.copy.status
 
@@ -319,7 +324,7 @@ class BlobStorageService:
                     blob=blob_name,
                 )
 
-                # Generar SAS URL para el blob origen (requerido para containers privados)
+                # Generar SAS URL para el blob origen 
                 source_url_with_sas = self._generate_sas_url(
                     blob_service=blob_service,
                     container_name=source_container,
