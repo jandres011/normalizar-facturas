@@ -1,83 +1,71 @@
-# Template Python Azure Functions - Document Intelligence
+# Normalizador de Nombres de Facturas - Azure Functions
 
-Template de Azure Functions en Python con Clean Architecture para procesamiento automático de documentos PDF con Azure Document Intelligence. Detecta PDFs en blob storage, extrae campos y valores, envía datos a API externa y archiva documentos.
+Azure Function en Python (Programming Model v2) que estandariza los nombres de archivos de facturas subidos a Azure Blob Storage. Se activa mediante un Event Grid Trigger cuando se crea un blob, normaliza el nombre (minúsculas, sin espacios ni caracteres especiales) y copia el archivo dentro del mismo container con el nombre normalizado, eliminando el original.
 
-## 🎯 Características
+## Flujo de Procesamiento
 
-- ✅ Azure Functions Programming Model v2
-- ✅ **Blob Trigger** - procesamiento automático al detectar PDFs
-- ✅ Azure Document Intelligence para análisis de facturas
-- ✅ Extracción de campos y valores (key-value pairs)
-- ✅ Envío automático de datos a API externa
-- ✅ Movimiento automático de PDFs entre containers (temporal → archivo)
-- ✅ Manejo de errores con container de fallidos
-- ✅ Integración con Azure Key Vault para gestión de secretos
-- ✅ Logging estructurado con structlog
-- ✅ Validación de datos con Pydantic v2
-- ✅ Autenticación JWT opcional
-- ✅ Manejo centralizado de excepciones
-- ✅ Tests unitarios con pytest
-- ✅ Sin dependencias de base de datos - procesamiento directo
+1. Se sube un archivo `.pdf` o `.xml` al container configurado (`incoming_container`).
+2. Event Grid notifica el evento `Microsoft.Storage.BlobCreated` a la función.
+3. La función valida el tipo de evento y el formato del `subject` para extraer carpeta y nombre del blob.
+4. Se valida que la extensión sea `.pdf` o `.xml`; cualquier otra extensión se ignora.
+5. Se calcula el nombre normalizado preservando la subcarpeta de origen. Si el nombre ya está normalizado, el evento se ignora para evitar reprocesamiento.
+6. El blob se copia con el nombre normalizado y el original se elimina tras confirmar la copia.
+7. Si ocurre un error durante la copia, el blob se mueve al container de errores (`failed_container`) con el mensaje de error en los metadatos.
 
-## 🔄 Flujo de Procesamiento
+## Estructura del Proyecto
 
-1. **PDF llega** → Se agrega archivo a container `incoming-pdfs`
-2. **Blob Trigger activa** → Azure Function detecta nuevo archivo
-3. **Análisis** → Document Intelligence extrae datos (modelo: facturas)
-4. **Envío** → Datos extraídos se envían a API externa (JSON)
-5. **Archivo** → PDF se mueve a container `archived-pdfs`
-6. **Si falla** → PDF se mueve a container `pdf-failed` con metadata de error
+```
+.
+├── function_app.py                        # Punto de entrada, registra los blueprints
+├── host.json                              # Configuración de Azure Functions
+├── pytest.ini                             # Configuración de pytest y cobertura
+├── requirements.txt                       # Dependencias
+│
+├── src/
+│   ├── core/
+│   │   ├── config/
+│   │   │   └── settings.py               # Configuración vía Pydantic Settings
+│   │   ├── exceptions.py                 # Excepciones personalizadas de la app
+│   │   └── logging.py                    # Configuración de logging estructurado
+│   │
+│   ├── functions/
+│   │   └── blob_processor/
+│   │       └── function.py               # Event Grid Trigger: normalize_invoice_name
+│   │
+│   ├── integrations/
+│   │   └── azure/
+│   │       └── blob_storage_service.py   # Copiar/mover blobs entre containers
+│   │
+│   └── utils/
+│       └── name_normalizer.py            # Normalización de nombres de blobs
+│
+└── tests/                                 # Tests unitarios (pytest)
+```
 
-## 📋 Requisitos Previos
+## Requisitos Previos
 
 - Python 3.11 o superior
 - Azure Functions Core Tools v4
 - Cuenta de Azure con:
-  - Azure Functions
-  - Azure Key Vault
-  - Azure Document Intelligence
-  - Azure Storage Account con 3 containers:
-    - `incoming-pdfs` (temporal, donde se suben PDFs)
-    - `archived-pdfs` (permanente, PDFs procesados)
-    - `pdf-failed` (errores, PDFs que fallaron)
-  - API externa que acepte JSON con datos extraídos
+  - Azure Functions (Event Grid Trigger)
+  - Azure Storage Account con los containers configurados en `source_container_name`, `destination_container_name` y `failed_container_name`
+  - Una suscripción de Event Grid sobre el Storage Account que notifique eventos `Microsoft.Storage.BlobCreated` a esta función
 
-## 🚀 Inicio Rápido
+## Configuración
 
-### 1. Clonar el Proyecto
+La configuración se maneja con Pydantic Settings ([src/core/config/settings.py](src/core/config/settings.py)). Variables disponibles (todas con valor por defecto salvo `storage_connection_string`):
 
-```bash
-git clone <repository-url>
-cd template.python-function.back
-```
+| Variable | Descripción | Valor por defecto |
+|----------|-------------|--------------------|
+| `ENVIRONMENT` | Entorno de ejecución (`development`, `testing`, `production`) | `development` |
+| `STORAGE_CONNECTION_STRING` | Connection string de Azure Storage | `None` |
+| `SOURCE_CONTAINER_NAME` | Container origen de blobs entrantes | `entrada` |
+| `DESTINATION_CONTAINER_NAME` | Container destino de blobs normalizados | `salida` |
+| `FAILED_CONTAINER_NAME` | Container para blobs con error | `error` |
+| `LOG_LEVEL` | Nivel de logging | `INFO` |
+| `LOG_FORMAT` | Formato de logging (`json`, `text`) | `json` |
 
-### 2. Configurar Entorno Virtual
-
-```bash
-python -m venv venv
-source venv/bin/activate  # En Windows: venv\Scripts\activate
-```
-
-### 3. Instalar Dependencias
-
-```bash
-python scripts/setup_dev.py
-```
-
-O manualmente:
-
-```bash
-pip install -r requirements.txt
-pip install -r requirements-dev.txt
-```
-
-### 4. Configurar Variables de Entorno
-
-**IMPORTANTE**: Este proyecto usa Azure Key Vault para TODAS las variables sensibles.
-
-#### Desarrollo Local
-
-Editar `local.settings.json` con las credenciales de Key Vault:
+Para desarrollo local, definir estas variables en `local.settings.json`:
 
 ```json
 {
@@ -85,262 +73,56 @@ Editar `local.settings.json` con las credenciales de Key Vault:
   "Values": {
     "AzureWebJobsStorage": "UseDevelopmentStorage=true",
     "FUNCTIONS_WORKER_RUNTIME": "python",
-    
+
     "ENVIRONMENT": "development",
     "LOG_LEVEL": "INFO",
-    
-    "AZURE_KEY_VAULT_URL": "https://tu-keyvault.vault.azure.net/",
-    "AZURE_TENANT_ID": "tu-tenant-id",
-    "AZURE_CLIENT_ID": "tu-client-id",
-    "AZURE_CLIENT_SECRET": "tu-client-secret"
+    "STORAGE_CONNECTION_STRING": "DefaultEndpointsProtocol=https;AccountName=...",
+    "SOURCE_CONTAINER_NAME": "entrada",
+    "DESTINATION_CONTAINER_NAME": "salida",
+    "FAILED_CONTAINER_NAME": "error"
   }
 }
 ```
 
-#### Configurar Secretos en Key Vault
+## Inicio Rápido
 
-Los secretos necesarios en Azure Key Vault:
-
-```bash
-# Document Intelligence
-az keyvault secret set --vault-name tu-keyvault --name document-intelligence-endpoint --value "https://..."
-az keyvault secret set --vault-name tu-keyvault --name document-intelligence-key --value "tu-api-key"
-
-# API Externa
-az keyvault secret set --vault-name tu-keyvault --name external-api-url --value "https://api.documentos.com/api/documents"
-az keyvault secret set --vault-name tu-keyvault --name external-api-key --value "tu-api-key-externa"
-
-# Azure Storage
-az keyvault secret set --vault-name tu-keyvault --name storage-connection-string --value "DefaultEndpointsProtocol=https;AccountName=..."
-
-# JWT (opcional - si usas autenticación)
-az keyvault secret set --vault-name tu-keyvault --name jwt-secret --value "tu-secreto-jwt"
-
-# Ver docs/KEY_VAULT_SETUP.md para lista completa
-```
-
-Ver [docs/KEY_VAULT_SETUP.md](docs/KEY_VAULT_SETUP.md) para configuración completa.
-
-### 5. Validar Configuración
+### 1. Configurar Entorno Virtual
 
 ```bash
-python scripts/validate.py
+python -m venv venv
+source venv/bin/activate  # En Windows: venv\Scripts\activate
 ```
 
-### 6. Ejecutar Localmente
+### 2. Instalar Dependencias
+
+```bash
+pip install -r requirements.txt
+```
+
+### 3. Ejecutar Localmente
 
 ```bash
 func start
 ```
 
-La aplicación estará disponible en `http://localhost:7071`
+## Tests
 
-## 📁 Estructura del Proyecto
-
-```
-template.python-function.back/
-├── function_app.py              # Punto de entrada de Azure Functions
-├── host.json                    # Configuración de Azure Functions
-├── local.settings.json          # Variables de entorno locales
-├── requirements.txt             # Dependencias principales
-├── requirements-dev.txt         # Dependencias de desarrollo
-├── pytest.ini                   # Configuración de pytest
-│
-├── src/                         # Código fuente (99%+ cobertura)
-│   ├── functions/              # Azure Functions handlers
-│   │   ├── health/            # Health check endpoint
-│   │   ├── document_analysis/ # Análisis manual de PDFs (HTTP)
-│   │   └── blob_processor/    # Procesamiento automático de PDFs (Blob Trigger)
-│   │
-│   ├── core/                   # Componentes core
-│   │   ├── config/            # Configuración y settings
-│   │   │   ├── settings.py   # Variables de entorno con Pydantic
-│   │   │   └── load_secrets.py # Azure Key Vault
-│   │   ├── logging.py         # Logging estructurado
-│   │   └── exceptions.py      # Excepciones personalizadas
-│   │
-│   ├── models/                 # Esquemas Pydantic
-│   │   └── document.py        # Schemas para documentos
-│   │
-│   ├── utils/                  # Utilidades
-│   │   ├── response.py        # Helpers de respuestas HTTP
-│   │   └── security.py        # JWT y seguridad
-│   │
-│   └── integrations/           # Servicios externos (NO medido en cobertura)
-│       ├── azure/             # Servicios Azure
-│       │   ├── blob_storage_service.py
-│       │   ├── document_intelligence_service.py
-│       │   └── key_vault.py
-│       ├── api/               # APIs externas
-│       │   └── external_api_service.py
-│       └── decorators.py      # Decoradores legacy
-│
-├── scripts/                     # Scripts de automatización
-│   ├── process_pdf.py          # Procesamiento batch de PDFs
-│   ├── setup_dev.py            # Configuración de desarrollo
-│   └── validate.py             # Validación del proyecto
-│
-├── tests/                       # Tests (173 passing, 16 skipped)
-│   ├── conftest.py
-│   ├── test_health.py
-│   ├── test_items.py
-│   └── test_document_intelligence.py
-│
-└── docs/                        # Documentación
-    ├── STRUCTURE.md            # Estructura del proyecto
-    ├── BEST_PRACTICES.md
-    └── DOCUMENT_INTELLIGENCE.md
-
-NOTA: La estructura fue reorganizada de shared/ y functions/ a src/ para mejor organización
-y cobertura de tests (99.26%). Ver STRUCTURE.md para detalles de la migración.
-```
-
-## 🔌 Endpoints Disponibles
-
-### Health Check
-
-```http
-GET /api/health
-
-Respuesta:
-{
-  "success": true,
-  "data": {
-    "status": "healthy",
-    "timestamp": "2024-04-08T12:00:00Z",
-    "version": "1.0.0"
-  }Procesamiento Automático (Blob Trigger)
-
-```
-No requiere llamada HTTP - se activa automáticamente cuando se sube un PDF a:
-- Container: incoming-pdfs
-- Tipo: *.pdf
-
-Flujo:
-1. PDF llega a incoming-pdfs
-2. Function se activa automáticamente
-3. Procesa con Document Intelligence (modelo: prebuilt-invoice)
-4. Envía datos a API externa configurada
-5. Mueve PDF a archived-pdfs
-6. Si falla, mueve a pdf-failed
-```
-
-### Análisis Manual de Documentos PDF (HTTP)
-}
-```
-
-### Análisis de Documentos PDF
-
-```http
-# Analizar documento desde URL
-POST /api/documents/analyze
-{
-  "document_url": "https://storage.blob.core.windows.net/docs/factura.pdf",
-  "model_id": "prebuilt-invoice",
-  "pages": "1-3"
-}
-
-Respuesta:
-{
-  "success": true,
-  "message": "Documento analizado exitosamente",
-  "data": {
-    "model_id": "prebuilt-invoice",
-    "content": "Texto completo extraído...",
-    "pages_count": 3,
-    "tables_count": 2,
-    "key_value_pairs": {
-      "InvoiceId": "INV-001",
-      "InvoiceTotal": "1500.00",
-      "InvoiceDate": "2024-04-08",
-      "VendorName": "Empresa XYZ"
-    },
-    "confidence": 0.98,
-    "pages": [...],
-    "tables": [...]
-  }
-}
-
-# Modelos disponibles
-GET /api/documents/models
-```
-
-## 📄 Modelos de Document Intelligence
-
-| Modelo | Descripción | Casos de Uso |
-|--------|-------------|--------------|
-| `prebuilt-read` | Lectura general de texto | Extracción de texto, OCR |
-| `prebuilt-layout` | Layout y tablas | Tablas, estructura de documentos |
-| `prebuilt-invoice` | Facturas | Procesamiento de facturas |
-| `prebuilt-receipt` | Recibos | Tickets de compra |
-| `prebuilt-idDocument` | Documentos de identidad | Pasaportes, licencias |
-| `prebuilt-businessCard` | Tarjetas de presentación | Información de contacto |
-
-## 🤖 Script de Automatización
-
-Procesar documentos PDF en batch:
-
-```bash
-# Procesar un archivo
-python scripts/process_pdf.py --file documento.pdf --model prebuilt-read
-
-# Procesar carpeta completa
-python scripts/process_pdf.py --folder ./documentos --model prebuilt-invoice --output resultados.json
-
-# Procesar desde URL
-python scripts/process_pdf.py --url https://ejemplo.com/doc.pdf --model prebuilt-layout
-
-# Con carga de secretos desde Key Vault
-python scripts/process_pdf.py --file doc.pdf --load-secrets
-```
-
-## 🧪 Tests
-
-Ejecutar tests:
+El proyecto usa pytest con cobertura mínima requerida del 80% sobre `src/functions`, `src/core` y `src/utils` (ver [pytest.ini](pytest.ini)).
 
 ```bash
 # Todos los tests
 pytest
 
-# Tests con cobertura
-pytest --cov
-
 # Solo tests unitarios
 pytest -m unit
 
-# Tests con reporte HTML
-pytest --cov --cov-report=html
+# Reporte de cobertura en HTML
+pytest --cov-report=html
 ```
 
-## 🔐 Seguridad
+## Logging
 
-### Azure Key Vault
-
-**TODAS las variables sensibles se almacenan en Azure Key Vault**:
-
-**Base de Datos:**
-- `db-host`, `db-port`, `db-name`, `db-user`, `db-password`
-
-**Document Intelligence:**
-- `document-intelligence-endpoint`, `document-intelligence-key`
-
-**Seguridad:**
-- `jwt-secret`, `jwt-algorithm`, `jwt-expire-minutes`
-
-**Configuración:**
-- `rate-limit-requests`, `rate-limit-window`
-- `max-multipart-size`
-- `appinsights-connection-string`
-Secretos almacenados en Azure Key Vault**:
-
-**Document Intelligence:**
-- `document-intelligence-endpoint`
-- `document-intelligence-key`
-
-**Seguridad (opcional)
-## 📊 Logging
-
-El proyecto usa logging estructurado con `structlog`:
+El proyecto usa logging estructurado con `structlog` (ver [src/core/logging.py](src/core/logging.py)):
 
 ```python
 import structlog
@@ -348,21 +130,17 @@ import structlog
 logger = structlog.get_logger()
 
 logger.info(
-    "Documento procesado",
-    document_id=123,
-    pages=5,
-    confidence=0.98
+    "Normalización completada exitosamente",
+    original_blob_path="Factura Enero 2024.PDF",
+    normalized_blob_path="factura_enero_2024.pdf",
 )
 ```
 
-Los logs incluyen:
-- Filtrado automático de información sensible
-- IDs de invocación para rastreo
-- Formato JSON para análisis
+## Manejo de Errores
 
-## 🚀 Despliegue
+Las excepciones de la aplicación están centralizadas en [src/core/exceptions.py](src/core/exceptions.py). La relevante para este flujo es `StorageError`, usada por `BlobStorageService` para reportar fallas al copiar, mover o leer blobs. Cuando ocurre un error (esperado o inesperado) durante la normalización, el blob se mueve al container de errores con el detalle del fallo en los metadatos.
 
-### Despliegue a Azure
+## Despliegue
 
 ```bash
 # Login a Azure
@@ -383,37 +161,38 @@ az functionapp config appsettings set \
   --name mi-function-app \
   --resource-group mi-resource-group \
   --settings \
-    DOCUMENT_INTELLIGENCE_ENDPOINT="https://..." \
-    AZURE_KEY_VAULT_URL="https://..."
+    FUNCTIONS_WORKER_RUNTIME="python" \
+    FUNCTIONS_EXTENSION_VERSION="~4" \
+    WEBSITE_RUN_FROM_PACKAGE="1" \
+    STORAGE_CONNECTION_STRING="..." \
+    SOURCE_CONTAINER_NAME="entrada" \
+    DESTINATION_CONTAINER_NAME="salida" \
+    FAILED_CONTAINER_NAME="error"
 
 # Desplegar
 func azure functionapp publish mi-function-app
 ```
 
-## 📚 Documentación Adicional
+La Function App debe ser Linux y usar la misma versión mayor de Python que el
+pipeline (actualmente 3.12). En Azure se puede comprobar con:
 
-- [Configuración de Azure Key Vault](docs/KEY_VAULT_SETUP.md) - **IMPORTANTE: Leer primero**
-- [Procesamiento Automático con Blob Trigger](docs/BLOB_PROCESSING.md) - **Flujo principal del sistema**
-- [Testing y Cobertura](docs/TESTING.md) - **Guía completa de tests (80% mínimo)**
-- [Mejores Prácticas](docs/BEST_PRACTICES.md)
-- [Guía de Document Intelligence](docs/DOCUMENT_INTELLIGENCE.md)
-- [Inicio Rápido](docs/QUICKSTART.md)
+```bash
+az functionapp config show \
+  --name mi-function-app \
+  --resource-group mi-resource-group \
+  --query "{linuxFxVersion:linuxFxVersion,alwaysOn:alwaysOn}"
 
-## 🤝 Contribución
+az functionapp config appsettings list \
+  --name mi-function-app \
+  --resource-group mi-resource-group \
+  --query "[?name=='FUNCTIONS_WORKER_RUNTIME' || name=='FUNCTIONS_EXTENSION_VERSION' || name=='WEBSITE_RUN_FROM_PACKAGE']"
+```
 
-1. Fork el proyecto
-2. Crear rama de feature (`git checkout -b feature/AmazingFeature`)
-3. Commit cambios (`git commit -m 'Add AmazingFeature'`)
-4. Push a la rama (`git push origin feature/AmazingFeature`)
-5. Abrir Pull Request
+El paquete debe contener `function_app.py`, `host.json`, `requirements.txt` y
+`src/` en la raíz. No se debe subir un ZIP dentro de otro ZIP ni el entorno
+virtual local. El error `Offset to Central Directory cannot be held in an
+Int64` indica un artefacto ZIP inválido; en el pipeline, publica un paquete
+limpio aplicando `.funcignore` y evita comprimir `$(System.DefaultWorkingDirectory)`
+después de haber generado otro archivo ZIP dentro de ese directorio.
 
-
-## 👥 Autores
-
-DevOps Team
-
-## 🙏 Agradecimientos
-
-- Template basado en mejores prácticas de Clean Architecture
-- Integración con Azure Document Intelligence
-- Inspirado en el proyecto template.python.back
+Tras el despliegue, configurar la suscripción de Event Grid en el Storage Account apuntando al endpoint de la función para el evento `Microsoft.Storage.BlobCreated`.

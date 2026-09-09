@@ -8,7 +8,7 @@ de la aplicación de manera tipada y validada, adaptado para Azure Functions.
 from functools import lru_cache
 from typing import Optional
 
-from pydantic import Field, validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -66,7 +66,7 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO", description="Nivel de logging")
     log_format: str = Field(default="json", description="Formato de logging")
 
-    @validator("environment")
+    @field_validator("environment")
     def validate_environment(cls, v: str) -> str:
         """Valida que el entorno sea válido."""
         allowed = ["development", "testing", "production"]
@@ -74,7 +74,7 @@ class Settings(BaseSettings):
             raise ValueError(f"Environment debe ser uno de: {allowed}")
         return v
 
-    @validator("log_level")
+    @field_validator("log_level")
     def validate_log_level(cls, v: str) -> str:
         """Valida que el nivel de log sea válido."""
         allowed = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
@@ -82,7 +82,7 @@ class Settings(BaseSettings):
             raise ValueError(f"Log level debe ser uno de: {allowed}")
         return v.upper()
 
-    @validator("log_format")
+    @field_validator("log_format")
     def validate_log_format(cls, v: str) -> str:
         """Valida que el formato de log sea válido."""
         allowed = ["json", "text"]

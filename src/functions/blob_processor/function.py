@@ -44,7 +44,6 @@ async def normalize_invoice_name(event: func.EventGridEvent) -> None:
         event: Evento de Event Grid con metadata del blob creado
     """
 
-    # Ignorar eventos que no sean creación de blob
     event_type = event.event_type
     if event_type != "Microsoft.Storage.BlobCreated":
         logger.info(
@@ -67,12 +66,12 @@ async def normalize_invoice_name(event: func.EventGridEvent) -> None:
         )
         return
 
-    original_blob_path = subject_parts[1]  # "porvalidar/factura 001.pdf"
+    original_blob_path = subject_parts[1] 
 
     # Separar carpeta y nombre de archivo
     path_parts = original_blob_path.rsplit("/", maxsplit=1)
     if len(path_parts) == 2:
-        folder_path, filename = path_parts  # "porvalidar", "factura 001.pdf"
+        folder_path, filename = path_parts 
     else:
         folder_path, filename = "", path_parts[0]  # raíz del container
 
@@ -139,8 +138,8 @@ async def normalize_invoice_name(event: func.EventGridEvent) -> None:
 
     try:
         destination_url = await storage_service.copy_blob_with_normalized_name(
-            original_name=original_blob_path,      # "porvalidar/factura 001.pdf"
-            normalized_name=normalized_blob_path,  # "porvalidar/factura001.pdf"
+            original_name=original_blob_path,      
+            normalized_name=normalized_blob_path,  
             source_container=storage_service.incoming_container,
             destination_container=storage_service.incoming_container,
         )

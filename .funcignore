@@ -1,10 +1,13 @@
 .git*
+.azuredevops/
 .vscode
 .idea
 .pytest_cache/
 .coverage
+.coverage.*
 coverage.xml
 htmlcov/
+junit/
 *.pyc
 __pycache__/
 *.egg-info/
@@ -22,6 +25,7 @@ LICENSE
 venv/
 .venv/
 env/
--e 
 # Dependencias locales - Azure las instala desde requirements.txt
 .python_packages/
+*.zip
+*.tar.gz
